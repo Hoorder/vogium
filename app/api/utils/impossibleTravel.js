@@ -1,6 +1,5 @@
 import db from "@/app/lib/db_connect";
 import { blockLoginAttemptsAccount } from "./loginAttemptsHelper";
-import { NextResponse } from "next/server";
 
 export async function impossibleTravelCheck(
   clientId,
@@ -20,17 +19,29 @@ export async function impossibleTravelCheck(
     }
 
     const userData = rows[0];
-
     const lastLoginTime = userData.last_successful_login_time;
     const lastLoginCountry = userData.last_country;
 
-    console.log(`Ostatni Czas -> ${lastLoginTime}`);
-    console.log(`Ostatni Kraj -> ${lastLoginCountry}`);
-    console.log(`Obecny Kraj -> ${currentCountry}`);
-    console.log(`Czy kraje są różne -> ${lastLoginCountry !== currentCountry}`);
+    const currentTime = new Date();
+    const currHour = parseInt(currentTime.getHours());
+    const currMin = parseInt(currentTime.getMinutes());
+    const currSec = parseInt(currentTime.getSeconds());
+    const totalCurrTimeSec = currHour * 3600 + currMin * 60 + currSec;
 
-    if (lastLoginCountry !== currentCountry) {
-      const currentLoginDateTime = new Date();
+    const lastLoginParts = lastLoginTime.split(":");
+    const lastLoginHour = parseInt(lastLoginParts[0], 10);
+    const lastLoginMin = parseInt(lastLoginParts[1], 10);
+    const lastLoginSec = parseInt(lastLoginParts[2], 10);
+    const lastLoginTimeSec =
+      lastLoginHour * 3600 + lastLoginMin * 60 + lastLoginSec;
+
+    if (
+      totalCurrTimeSec - lastLoginTimeSec <= 300 &&
+      lastLoginCountry !== currentCountry
+    ) {
+      await blockLoginAttemptsAccount(clientId, accountRole);
+      const impossibleLogin = true;
+      return impossibleLogin;
     }
 
     return false;

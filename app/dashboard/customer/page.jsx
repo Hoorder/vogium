@@ -20,7 +20,7 @@ export default function CustomerDashboard() {
   return (
     <>
       <button onClick={handleLogOut}>Wyloguj</button>
-      <p>Siema</p>
+      <p>Witaj Kliencie</p>
     </>
   );
 }

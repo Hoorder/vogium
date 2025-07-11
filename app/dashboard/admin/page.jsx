@@ -20,7 +20,7 @@ export default function AdminDashboard() {
   return (
     <>
       <button onClick={handleLogOut}>Wyloguj</button>
-      <p>Siema Admin</p>
+      <p>Witaj Adminie</p>
     </>
   );
 }

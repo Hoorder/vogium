@@ -38,7 +38,7 @@ export async function POST(request) {
     //getting blacklist IP and COUNTRY
     const ipAdress = await checkBlacklistIp(query);
     const countryName = await checkBlacklistCountry(country);
-    //checking blacklistp ip
+    //checking blacklistp IP nad COUNTRY
     if (ipAdress === query || countryName === country) {
       return NextResponse.json(
         { error: "Błąd podczas połączenia z serwerem." },
@@ -96,9 +96,20 @@ export async function POST(request) {
       //create and send login logs
       await sendLoginLog(query, country, clientId, "success");
       //checking if current country is diff then last login and time is 5min since last succesfull login
-      await impossibleTravelCheck(clientId, account_role, country);
+      const impossibleLogin = await impossibleTravelCheck(
+        clientId,
+        account_role,
+        country
+      );
+      if (impossibleLogin) {
+        await sendLoginLog(query, country, clientId, "failed_impossible_login");
+        await updateLastLoginData(clientId, query, country);
+        return NextResponse.json(
+          { error: "Podejrzana aktywność. Twoje konto zostało zablokowane. " },
+          { status: 403 }
+        );
+      }
       await updateLastLoginData(clientId, query, country);
-
       //creating token with user data from DB
       const token = await generateJWT({
         customer_id: rows[0].id_customer,
