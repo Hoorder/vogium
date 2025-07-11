@@ -1,6 +1,10 @@
 import { SignJWT } from "jose";
 import { NextResponse } from "next/server";
-import { findUserById } from "../utils/userdata";
+import {
+  findUserById,
+  getUserIpAndCountry,
+  updateLastLoginData,
+} from "../utils/userdata";
 import {
   blockLoginAttemptsAccount,
   checkLoginAttempts,
@@ -8,7 +12,13 @@ import {
   increaseLoginAttempts,
 } from "../utils/loginAttemptsHelper";
 import bcrypt from "bcrypt";
-import { loginAttempts } from "../utils/loginAttempts";
+import { sendLoginAttemptLog, sendLoginLog } from "../utils/logs";
+import {
+  addIpToBlackList,
+  checkBlacklistCountry,
+  checkBlacklistIp,
+} from "../utils/blackList";
+import { impossibleTravelCheck } from "../utils/impossibleTravel";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JW_SECRET_KEY);
 
@@ -23,10 +33,21 @@ async function generateJWT(payload) {
 export async function POST(request) {
   try {
     const body = await request.json();
-
+    //checking user ip and country
+    const { query, country } = await getUserIpAndCountry();
+    //getting blacklist IP and COUNTRY
+    const ipAdress = await checkBlacklistIp(query);
+    const countryName = await checkBlacklistCountry(country);
+    //checking blacklistp ip
+    if (ipAdress === query || countryName === country) {
+      return NextResponse.json(
+        { error: "Błąd podczas połączenia z serwerem." },
+        { status: 401 }
+      );
+    }
+    //clear user login data
     const clientId = body.clientId?.trim();
     const password = body.password?.trim();
-
     //checking if cliendID or password is empty
     if (clientId.length === 0 || password.length === 0) {
       return NextResponse.json(
@@ -45,6 +66,14 @@ export async function POST(request) {
     const rows = await findUserById(clientId);
     //checking if user exists
     if (rows.length === 0) {
+      //create and send login logs
+      await sendLoginAttemptLog(
+        query,
+        country,
+        clientId,
+        "failed_id_not_found"
+      );
+
       return NextResponse.json(
         { error: "Nieprawidłowy identyfikator lub hasło" },
         { status: 401 }
@@ -62,9 +91,13 @@ export async function POST(request) {
 
     if (isPasswordCorrect) {
       //clearing login attempts
-      const find_account = await findUserById(clientId);
-      const { account_role } = find_account[0];
+      const { account_role } = rows[0];
       await clearLoginAttempts(clientId, account_role);
+      //create and send login logs
+      await sendLoginLog(query, country, clientId, "success");
+      //checking if current country is diff then last login and time is 5min since last succesfull login
+      await impossibleTravelCheck(clientId, account_role, country);
+      await updateLastLoginData(clientId, query, country);
 
       //creating token with user data from DB
       const token = await generateJWT({
@@ -97,8 +130,9 @@ export async function POST(request) {
       const MAX_ATTEMPTS_ADMIN = 2;
       const MAX_ATTEMPTS_CUSTOMER = 3;
       //finding role for clinet who's logining
-      const find_account = await findUserById(clientId);
-      const { account_role } = find_account[0];
+      const { account_role } = rows[0];
+      //create and send login logs
+      await sendLoginLog(query, country, clientId, "failed_password");
       //increasing attempts
       await increaseLoginAttempts(clientId, account_role);
       const login_attempts_data = await checkLoginAttempts(
@@ -108,12 +142,18 @@ export async function POST(request) {
       // checking attempts number
       const current_attempts = login_attempts_data[0]?.login_attempt;
 
+      if (current_attempts >= MAX_ATTEMPTS_ADMIN && account_role === "admin") {
+        await addIpToBlackList(query);
+      }
+
       if (
         (current_attempts >= MAX_ATTEMPTS_ADMIN && account_role === "admin") ||
         (current_attempts >= MAX_ATTEMPTS_CUSTOMER &&
           account_role === "customer")
       ) {
         await blockLoginAttemptsAccount(clientId, account_role);
+        await sendLoginLog(query, country, clientId, "account_locked");
+
         return NextResponse.json(
           { error: "Skontaktuj się z administratorem systemu." },
           { status: 401 }

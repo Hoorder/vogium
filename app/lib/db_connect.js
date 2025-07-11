@@ -8,3 +8,5 @@ const db = mysql.createPool({
 });
 
 export default db;
+
+//add secure tryCatch to catch error on base while logins

@@ -18,7 +18,6 @@ export default function Home() {
   const handleSubmit = async (e) => {
     try {
       e.preventDefault();
-
       const response = await fetch("/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
